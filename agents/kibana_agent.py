@@ -39,7 +39,12 @@ class KibanaAgent:
         must = [{"match": {"service.name": service}}] if service else []
         level_filter = CHECK_LEVEL_FILTERS.get(check_name, ["ERROR", "WARN"])
         if level_filter:
-            must.append({"terms": {"log.level": level_filter}})
+            # log.level is dynamically mapped as analyzed text with a "keyword" sub-field; a
+            # `terms` filter against the plain field would match the analyzer's lowercased
+            # tokens, never the literal "ERROR"/"WARN" values it's given here (confirmed live:
+            # 0 hits against plain log.level, 70 hits against log.level.keyword for the same
+            # seeded data) -- the exact-match `.keyword` sub-field is required.
+            must.append({"terms": {"log.level.keyword": level_filter}})
         for keyword in CHECK_KEYWORDS.get(check_name, []):
             must.append({"match_phrase": {"message": keyword}})
 

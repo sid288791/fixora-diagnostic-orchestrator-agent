@@ -41,6 +41,18 @@ async def test_check_error_logs_no_anomaly_when_no_hits():
 
 
 @pytest.mark.asyncio
+async def test_check_error_logs_filters_on_log_level_keyword_subfield():
+    client = FakeElasticMcpClient([])
+    agent = KibanaAgent(mcp_client=client, index="fixora-app-logs")
+
+    await agent.check("error_logs", {"service": "payment-service"})
+
+    _, query_body = client.last_call
+    terms_clauses = [c for c in query_body["query"]["bool"]["must"] if "terms" in c]
+    assert terms_clauses == [{"terms": {"log.level.keyword": ["ERROR"]}}]
+
+
+@pytest.mark.asyncio
 async def test_check_ignores_non_string_service_value():
     client = FakeElasticMcpClient([])
     agent = KibanaAgent(mcp_client=client, index="fixora-app-logs")
