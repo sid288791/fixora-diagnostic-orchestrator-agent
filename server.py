@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agents.kibana_agent import KibanaAgent
 from mcp_clients.elastic_mcp_client import ElasticMcpClient
@@ -48,7 +48,11 @@ class EvidenceRequestItem(BaseModel):
 class CollectEvidenceRequest(BaseModel):
     incident_id: str
     alert: Dict[str, Any] = {}
-    requests: List[EvidenceRequestItem]
+    # Bounded: DiagnosticLoop's own max_checks_per_iteration caps requests per round to a
+    # handful, and each "kibana" request spawns its own Elastic MCP subprocess (no pooled
+    # session in phase 1) -- an unbounded list here would let one call fork unboundedly many
+    # npx processes.
+    requests: List[EvidenceRequestItem] = Field(max_length=20)
 
 
 @app.get("/healthcheck")

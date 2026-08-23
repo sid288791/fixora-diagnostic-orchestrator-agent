@@ -41,6 +41,20 @@ async def test_check_error_logs_no_anomaly_when_no_hits():
 
 
 @pytest.mark.asyncio
+async def test_check_ignores_non_string_service_value():
+    client = FakeElasticMcpClient([])
+    agent = KibanaAgent(mcp_client=client, index="fixora-app-logs")
+
+    await agent.check("error_logs", {"service": {"$ne": None}})
+
+    index, query_body = client.last_call
+    assert index == "fixora-app-logs"
+    # No service.name match clause should be present -- a non-string value must not reach the
+    # Elasticsearch query DSL.
+    assert all("service.name" not in clause.get("match", {}) for clause in query_body["query"]["bool"]["must"])
+
+
+@pytest.mark.asyncio
 async def test_check_unknown_check_name_still_searches_with_no_level_filter():
     client = FakeElasticMcpClient([])
     agent = KibanaAgent(mcp_client=client, index="fixora-app-logs")

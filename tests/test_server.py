@@ -30,6 +30,20 @@ def test_collect_evidence_dispatches_kibana_requests():
     app.dependency_overrides.clear()
 
 
+def test_collect_evidence_rejects_more_than_20_requests():
+    app.dependency_overrides[get_kibana_agent] = lambda: FakeKibanaAgent()
+    client = TestClient(app)
+
+    response = client.post("/api/v1/collect-evidence", json={
+        "incident_id": "ALT-001",
+        "alert": {"service": "payment-service"},
+        "requests": [{"agent": "kibana", "check": "error_logs"}] * 21,
+    })
+
+    assert response.status_code == 422
+    app.dependency_overrides.clear()
+
+
 def test_collect_evidence_returns_not_available_for_unwired_agents():
     app.dependency_overrides[get_kibana_agent] = lambda: FakeKibanaAgent()
     client = TestClient(app)

@@ -30,6 +30,11 @@ class KibanaAgent:
 
     async def check(self, check_name: str, alert: Dict[str, Any]) -> Dict[str, Any]:
         service = alert.get("service") or alert.get("service_name") or alert.get("app_name")
+        # `alert` is an untyped dict from the request body -- guard against a caller sending a
+        # non-string (object/array/number) here, which would otherwise be spliced directly into
+        # the Elasticsearch query DSL as a "match" value.
+        if not isinstance(service, str) or not service.strip():
+            service = None
 
         must = [{"match": {"service.name": service}}] if service else []
         level_filter = CHECK_LEVEL_FILTERS.get(check_name, ["ERROR", "WARN"])
