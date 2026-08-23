@@ -29,12 +29,25 @@ _parse_hit_block below parses that format back into a {"_source": {...}}
 dict, matching the shape callers (KibanaAgent) already expect.
 """
 import logging
+import shutil
+import sys
 from typing import Any, Dict, List
 
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import get_default_environment, stdio_client
 
 logger = logging.getLogger(__name__)
+
+# On Windows, npx resolves to npx.CMD (a batch file), and asyncio's subprocess_exec calls
+# CreateProcess directly, which cannot execute a .CMD file itself -- only cmd.exe can (confirmed
+# live: even the resolved npx.CMD path raised FileNotFoundError). POSIX has no such issue --
+# shutil.which("npx") there resolves straight to a real executable.
+if sys.platform == "win32":
+    _NPX_COMMAND = shutil.which("cmd") or "cmd"
+    _NPX_BASE_ARGS = ["/c", shutil.which("npx") or "npx"]
+else:
+    _NPX_COMMAND = shutil.which("npx") or "npx"
+    _NPX_BASE_ARGS = []
 
 
 def _parse_hit_block(text: str) -> Dict[str, Any]:
@@ -58,10 +71,16 @@ class ElasticMcpClient:
         self.mcp_package = mcp_package
 
     def _server_params(self) -> StdioServerParameters:
+        # StdioServerParameters.env, when set, REPLACES the child process's environment
+        # entirely rather than extending it (confirmed by reading mcp.client.stdio.stdio_client's
+        # source) -- a bare {"ES_URL": ..., "OTEL_SDK_DISABLED": ...} would starve npx/cmd.exe of
+        # PATH, SystemRoot, etc. Start from the SDK's own safe-inherited-vars default and layer
+        # ours on top.
+        env = {**get_default_environment(), "ES_URL": self.es_url, "OTEL_SDK_DISABLED": "true"}
         return StdioServerParameters(
-            command="npx",
-            args=["-y", self.mcp_package],
-            env={"ES_URL": self.es_url, "OTEL_SDK_DISABLED": "true"},
+            command=_NPX_COMMAND,
+            args=[*_NPX_BASE_ARGS, "-y", self.mcp_package],
+            env=env,
         )
 
     async def search(self, index: str, query_body: Dict[str, Any]) -> List[Dict[str, Any]]:
