@@ -1,0 +1,101 @@
+# =============================================================================
+# Kibana / Elasticsearch Toolset for HolmesGPT
+# =============================================================================
+# Tools for searching logs and indices via Kibana/Elasticsearch REST API.
+# Requires: KIBANA_BASE_URL, KIBANA_API_KEY environment variables.
+# Env vars in commands are expanded via os.path.expandvars ($VAR or ${VAR}).
+
+toolsets:
+  fixora-kibana:
+    enabled: true
+    description: "Tools for querying Kibana/Elasticsearch for log-based diagnostics"
+    prerequisites:
+      - command: "curl --version"
+      - env:
+          - KIBANA_BASE_URL
+          - KIBANA_API_KEY
+    tools:
+      - name: kibana_search_logs
+        description: >
+          Search Kibana logs using a query string.
+          Returns matching log entries from the specified index pattern.
+        command: |
+          curl -s -H "kbn-xsrf: true" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ApiKey ${KIBANA_API_KEY}" \
+            "${KIBANA_BASE_URL}/api/console/proxy?path={{ index | default('logs-*') }}/_search&method=POST" \
+            -d '{
+              "size": {{ limit | default(20) }},
+              "sort": [{"@timestamp": "desc"}],
+              "query": {
+                "bool": {
+                  "must": [
+                    {"query_string": {"query": "{{ query }}"}},
+                    {"range": {"@timestamp": {"gte": "now-{{ time_range | default('1h') }}", "lte": "now"}}}
+                  ]
+                }
+              }
+            }'
+        parameters:
+          query:
+            type: string
+            description: "Query string (e.g., 'level:error AND service:payment')"
+          index:
+            type: string
+            required: false
+            description: "Index pattern to search (e.g., 'logs-*', 'filebeat-*')"
+          time_range:
+            type: string
+            required: false
+            description: "Time range to search (e.g., '15m', '1h', '24h')"
+          limit:
+            type: integer
+            required: false
+            description: "Maximum number of log entries to return"
+
+      - name: kibana_get_error_summary
+        description: >
+          Get a summary of error-level logs grouped by service and message.
+          Useful for identifying the most frequent errors in a time window.
+        command: |
+          curl -s -H "kbn-xsrf: true" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ApiKey ${KIBANA_API_KEY}" \
+            "${KIBANA_BASE_URL}/api/console/proxy?path={{ index | default('logs-*') }}/_search&method=POST" \
+            -d '{
+              "size": 0,
+              "query": {
+                "bool": {
+                  "must": [
+                    {"term": {"level": "error"}},
+                    {"range": {"@timestamp": {"gte": "now-{{ time_range | default('1h') }}", "lte": "now"}}}
+                  ]
+                }
+              },
+              "aggs": {
+                "by_service": {
+                  "terms": {"field": "service.name", "size": 10},
+                  "aggs": {
+                    "by_message": {
+                      "terms": {"field": "message.keyword", "size": 5}
+                    }
+                  }
+                }
+              }
+            }'
+        parameters:
+          index:
+            type: string
+            required: false
+            description: "Index pattern to search"
+          time_range:
+            type: string
+            required: false
+            description: "Time range to search"
+
+      - name: kibana_list_indices
+        description: "List available Elasticsearch indices with doc counts and sizes."
+        command: |
+          curl -s -H "Authorization: ApiKey ${KIBANA_API_KEY}" \
+            "${KIBANA_BASE_URL}/api/console/proxy?path=_cat/indices?format=json&h=index,docs.count,store.size,status&method=GET" \
+            | python3 -c "import sys,json; data=json.load(sys.stdin); [print(f'{d[\"index\"]:40s} docs={d.get(\"docs.count\",\"?\")} size={d.get(\"store.size\",\"?\")}') for d in sorted(data, key=lambda x: x['index']) if not d['index'].startswith('.')]" 2>/dev/null || echo "Failed to list indices"

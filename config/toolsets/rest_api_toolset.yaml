@@ -1,0 +1,66 @@
+# =============================================================================
+# Custom REST API Toolset for HolmesGPT
+# =============================================================================
+# Provides tools to query arbitrary REST endpoints for diagnostic evidence.
+# Env vars referenced in commands are expanded via os.path.expandvars.
+# Parameters use {{ param }} Jinja2 placeholders (auto-inferred if undeclared).
+
+toolsets:
+  fixora-rest-api:
+    enabled: true
+    description: "Tools for querying custom REST API endpoints for diagnostics"
+    prerequisites:
+      - command: "curl --version"
+    tools:
+      - name: check_service_health
+        description: "Check the health endpoint of a service. Provide the full URL."
+        command: |
+          curl -s -o /dev/null -w '{"http_code": %{http_code}, "time_total": %{time_total}, "time_connect": %{time_connect}}' "{{ url }}"
+        parameters:
+          url:
+            type: string
+            description: "Full URL of the health endpoint (e.g., http://my-service:8080/health)"
+
+      - name: call_rest_endpoint
+        description: "Call any REST API endpoint with GET method and return the response body."
+        command: |
+          curl -s -H "Content-Type: application/json" {% if auth_header %}-H "Authorization: {{ auth_header }}"{% endif %} "{{ url }}"
+        parameters:
+          url:
+            type: string
+            description: "Full URL to call"
+          auth_header:
+            type: string
+            required: false
+            description: "Optional Authorization header value (e.g., 'Bearer token123')"
+
+      - name: call_rest_endpoint_post
+        description: "Call a REST API endpoint with POST method."
+        command: |
+          curl -s -X POST -H "Content-Type: application/json" {% if auth_header %}-H "Authorization: {{ auth_header }}"{% endif %} -d '{{ body }}' "{{ url }}"
+        parameters:
+          url:
+            type: string
+            description: "Full URL to call"
+          body:
+            type: string
+            description: "JSON request body"
+          auth_header:
+            type: string
+            required: false
+            description: "Optional Authorization header value"
+
+      - name: check_endpoint_latency
+        description: "Measure response time of an endpoint over multiple requests."
+        command: |
+          for i in $(seq 1 {{ count | default(5) }}); do
+            curl -s -o /dev/null -w "%{time_total}\n" "{{ url }}"
+          done | awk '{sum+=$1; count++} END {print "avg_ms:", (sum/count)*1000, "samples:", count}'
+        parameters:
+          url:
+            type: string
+            description: "URL to measure"
+          count:
+            type: integer
+            required: false
+            description: "Number of requests to make (default 5)"

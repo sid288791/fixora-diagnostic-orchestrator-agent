@@ -1,0 +1,156 @@
+# =============================================================================
+# Fixora Diagnostic Orchestrator - HolmesGPT Configuration
+# =============================================================================
+# This file configures HolmesGPT as the RCA (Root Cause Analysis) engine.
+# All sections are optional - HolmesGPT will use sensible defaults.
+# Environment variables can be referenced as: {{ env.VAR_NAME }}
+
+# -----------------------------------------------------------------------------
+# LLM Provider Configuration
+# -----------------------------------------------------------------------------
+# Supported providers via LiteLLM:
+#   - Ollama:    ollama_chat/<model>
+#   - OpenAI:    gpt-4.1, gpt-4.1-mini, etc.
+#   - Anthropic: anthropic/claude-sonnet-4-5-20250929
+#   - Azure:     azure/<deployment-name>
+#   - Bedrock:   bedrock/<model-id>
+#   - Gemini:    gemini/<model>
+llm:
+  model: "ollama_chat/qwen3:4b"
+  api_base: "http://localhost:11434"          # Ollama server URL
+  # api_key: "{{ env.LLM_API_KEY }}"         # Not needed for Ollama
+  max_steps: 30                               # Max agentic loop iterations
+  temperature: 0.7
+
+  # Optional: fallback model for simpler tasks (summarization, formatting)
+  # fast_model: "ollama_chat/qwen3:4b"
+
+# -----------------------------------------------------------------------------
+# Built-in Toolsets
+# -----------------------------------------------------------------------------
+# Toggle HolmesGPT's built-in toolsets on/off.
+# When enabled, they auto-detect prerequisites (e.g., kubectl on PATH).
+builtin_toolsets:
+  kubernetes:
+    enabled: true
+  grafana:
+    enabled: true
+    env:
+      GRAFANA_URL: "{{ env.GRAFANA_BASE_URL }}"
+      GRAFANA_API_KEY: "{{ env.GRAFANA_API_KEY }}"
+  grafana_loki:
+    enabled: false
+    env:
+      LOKI_URL: "{{ env.LOKI_URL }}"
+  grafana_tempo:
+    enabled: false
+    env:
+      TEMPO_URL: "{{ env.TEMPO_URL }}"
+  kafka:
+    enabled: true
+    env:
+      KAFKA_BOOTSTRAP_SERVERS: "{{ env.KAFKA_BOOTSTRAP_SERVERS }}"
+  elasticsearch:
+    enabled: true
+    env:
+      ELASTICSEARCH_URL: "{{ env.ELASTICSEARCH_URL }}"
+      ELASTICSEARCH_API_KEY: "{{ env.ELASTICSEARCH_API_KEY }}"
+  datadog:
+    enabled: false
+    env:
+      DD_API_KEY: "{{ env.DD_API_KEY }}"
+      DD_APP_KEY: "{{ env.DD_APP_KEY }}"
+  rabbitmq:
+    enabled: false
+  mongodb_atlas:
+    enabled: false
+  database:
+    enabled: true
+    env:
+      DATABASE_URL: "{{ env.POSTGRES_URL }}"
+
+# -----------------------------------------------------------------------------
+# MCP Servers
+# -----------------------------------------------------------------------------
+# External data sources accessible via Model Context Protocol.
+# Modes: streamable-http (recommended), stdio, sse (deprecated)
+mcp_servers:
+  # -- Grafana MCP Server --
+  # grafana:
+  #   description: "Grafana dashboards and alerting via MCP"
+  #   enabled: true
+  #   config:
+  #     url: "http://localhost:8000/mcp/messages"
+  #     mode: streamable-http
+  #     headers:
+  #       Authorization: "Bearer {{ env.GRAFANA_MCP_TOKEN }}"
+  #   llm_instructions: >
+  #     Use Grafana MCP to query dashboards, fetch panel data,
+  #     and check alert states. Prefer this for metric visualization.
+
+  # -- K6 MCP Server (Load Testing) --
+  # k6:
+  #   description: "K6 load testing results and performance data"
+  #   enabled: true
+  #   config:
+  #     url: "http://localhost:8001/mcp/messages"
+  #     mode: streamable-http
+  #   llm_instructions: >
+  #     Use K6 MCP to retrieve load test results, check response times,
+  #     error rates, and throughput from performance tests.
+
+  # -- Database MCP Server --
+  # postgres:
+  #   description: "PostgreSQL database access for diagnostics"
+  #   enabled: true
+  #   config:
+  #     url: "http://localhost:8002/mcp/messages"
+  #     mode: streamable-http
+  #   llm_instructions: >
+  #     Use this to run read-only diagnostic queries against PostgreSQL.
+  #     Check for slow queries, connection pool stats, and table health.
+
+  # -- Generic REST API MCP Server --
+  # rest_api:
+  #   description: "Custom REST API endpoints for diagnostics"
+  #   enabled: true
+  #   config:
+  #     url: "http://localhost:8003/mcp/messages"
+  #     mode: streamable-http
+  #   llm_instructions: >
+  #     Use this to call custom REST endpoints for health checks,
+  #     service status, and application-specific diagnostics.
+
+# -----------------------------------------------------------------------------
+# Custom YAML Toolsets
+# -----------------------------------------------------------------------------
+# Paths to additional YAML toolset files (relative to this config file).
+custom_toolsets:
+  - "toolsets/rest_api_toolset.yaml"
+  - "toolsets/kibana_toolset.yaml"
+  # - "toolsets/k6_toolset.yaml"
+  # - "toolsets/database_toolset.yaml"
+
+# -----------------------------------------------------------------------------
+# Investigation Defaults
+# -----------------------------------------------------------------------------
+investigation:
+  # Default system prompt additions for the RCA agent
+  system_prompt: >
+    You are an expert SRE / DevOps engineer performing root cause analysis.
+    Always gather evidence from multiple sources before concluding.
+    Prioritize actionable findings over speculation.
+    Structure your response with: Summary, Evidence, Root Cause, Recommendations.
+
+  # Timeout for a single investigation (seconds)
+  timeout: 300
+
+  # Maximum number of tool calls per investigation
+  max_tool_calls: 50
+
+# -----------------------------------------------------------------------------
+# Server Configuration
+# -----------------------------------------------------------------------------
+server:
+  host: "0.0.0.0"
+  port: 8092
